@@ -219,6 +219,9 @@ void drawMainMenu(u64 kDown) {
 int loginselection = 1;
 bool loginAttempted = false;
 char* roomresult = NULL;
+int roomselection = 1;
+char** rooms = NULL;
+int roomcount = 0;
 void drawLogIn(u64 kDown) {
     if (kDown & HidNpadButton_Down) {
         loginselection++;
@@ -275,12 +278,72 @@ void drawLogIn(u64 kDown) {
     drawText(10, 28+124, "Log In", COL_WHITE, 22);
 }
 
+void parseRooms(const char* roomdata) {
+    if (!roomdata) return;
+    
+    if (rooms) {
+        for (int i = 0; i < roomcount; i++) {
+            free(rooms[i]);
+        }
+        free(rooms);
+        rooms = NULL;
+        roomcount = 0;
+    }
+    char* data = strdup(roomdata);
+    char* token = strtok(data, "|");
+    
+    if (token) {
+        roomcount = atoi(token);
+        if (roomcount > 0) {
+            rooms = malloc(roomcount * sizeof(char*));
+            
+            for (int i = 0; i < roomcount; i++) {
+                token = strtok(NULL, "|");
+                if (token) {
+                    rooms[i] = strdup(token);
+                } else {
+                    rooms[i] = strdup("Unknown Room");
+                }
+            }
+        }
+    }
+    
+    free(data);
+    roomselection = 1;
+}
+
 void drawRoomSelection(u64 kDown) {
+    if (roomresult && !rooms) {
+        parseRooms(roomresult);
+    }
+    if (kDown & HidNpadButton_Down) {
+        roomselection++;
+        if (roomselection > roomcount) roomselection = 1;
+    }
+    if (kDown & HidNpadButton_Up) {
+        roomselection--;
+        if (roomselection < 1) roomselection = roomcount;
+    }
+    if (kDown & HidNpadButton_A) {
+        // TODO: Join selected room
+        screen = 2;
+    }
+    if (kDown & HidNpadButton_B) {
+        screen = 2;
+    }
+    
     drawRect(0, 0, 1280, 40, COL_HEADER);
     drawText(10, 28, "Room Selection", COL_WHITE, 22);
 
-    drawRect(0, 28 + (1 * 40), 1280, 40, COL_PANEL);
-    drawText(10, 28 + (1 * 40), roomresult, COL_WHITE, 22);
+    if (rooms && roomcount > 0) {
+        for (int i = 0; i < roomcount; i++) {
+            int y_pos = 40 + (i * 42);
+            drawRect(0, y_pos, 1280, 40, (i + 1 == roomselection) ? COL_HOVER : COL_PANEL);
+            drawText(10, y_pos + 28, rooms[i], COL_WHITE, 22);
+        }
+    } else {
+        drawError("Failed to load rooms", "ROOM_FETCH_FAIL");
+    }
 }
 
 int main(int argc, char* argv[]) {
