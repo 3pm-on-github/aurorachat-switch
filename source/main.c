@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <curl/curl.h>
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
@@ -18,6 +19,11 @@ static u32* framebuf;
 static u32 framebuf_width;
 static FT_Library ft;
 static FT_Face face;
+
+struct MemoryStruct {
+    char *memory;
+    size_t size;
+};
 
 void drawPixel(int x, int y, u32 color) {
     if (x >= 0 && x < 1280 && y >= 0 && y < 720)
@@ -91,16 +97,105 @@ void drawText(int x, int y, const char* text, u32 color, int size) {
     }
 }
 
-int screen = 0; // 0 = main menu, 1 = create account, 2 = log in
-const char* username = "test";
+char* openKeyboard(int maxlen, const char* guideText) {
+    Result rc = 0;
+    SwkbdConfig kbd;
+    char* result = malloc(256);
+    
+    if (!result) return NULL;
+    
+    rc = swkbdCreate(&kbd, 0);
+    if (R_SUCCEEDED(rc)) {
+        swkbdConfigMakePresetDefault(&kbd);
+        swkbdConfigSetInitialText(&kbd, "");
+        swkbdConfigSetGuideText(&kbd, guideText);
+        swkbdConfigSetStringLenMax(&kbd, maxlen);
+        rc = swkbdShow(&kbd, result, 256);
+        swkbdClose(&kbd);
+        
+        if (R_SUCCEEDED(rc)) {
+            return result;
+        }
+    }
+    
+    free(result);
+    return NULL;
+}
+
+const char* errmsg = "";
+const char* errcode = "";
+
+void drawError(const char* message, const char* error_code) {
+    drawText(10, 48, "oops, something went wrong :/", COL_RED, 50);
+    drawText(10, 114, message, COL_WHITE, 35);
+    drawText(10, 710, error_code, COL_WHITE, 22);
+}
+
+static size_t WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp) {
+    size_t realsize = size * nmemb;
+    struct MemoryStruct *mem = (struct MemoryStruct *)userp;
+    
+    char *ptr = realloc(mem->memory, mem->size + realsize + 1);
+    if(!ptr) {
+        drawError("Not enough memory", "REALLOC_NULL");
+        return 0;
+    }
+    
+    mem->memory = ptr;
+    memcpy(&(mem->memory[mem->size]), contents, realsize);
+    mem->size += realsize;
+    mem->memory[mem->size] = 0;
+    
+    return realsize;
+}
+
+void network_request(const char* url, char** result, const char* method) {
+    CURL *curl;
+    CURLcode res;
+    struct MemoryStruct chunk;
+    
+    chunk.memory = malloc(1);
+    chunk.size = 0;
+
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+
+    curl = curl_easy_init();
+    if (curl) {
+        curl_easy_setopt(curl, CURLOPT_URL, url);
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "aurorachat-switch/6.0");
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
+        curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, method);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+
+        consoleUpdate(NULL);
+
+        res = curl_easy_perform(curl);
+        if (res != CURLE_OK) {
+            drawError("curl_easy_perform() failed", curl_easy_strerror(res));
+            free(chunk.memory);
+            *result = NULL;
+        } else {
+            long response_code;
+            curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
+            *result = chunk.memory;
+        }
+        curl_easy_cleanup(curl);
+    }
+
+    curl_global_cleanup();
+}
+
+int screen = 0; // 0 = main menu, 1 = create account, 2 = log in, 3 = error screen, 4 = room selection
+const char* username = "";
+const char* password = "";
 
 int mainmenuselection = 1;
 void drawMainMenu(u64 kDown) {
     if (kDown & HidNpadButton_Down) {
-        mainmenuselection--;
+        mainmenuselection++;
     }
     if (kDown & HidNpadButton_Up) {
-        mainmenuselection++;
+        mainmenuselection--;
     }
     if (kDown & HidNpadButton_A) {
         screen = mainmenuselection;
@@ -122,42 +217,49 @@ void drawMainMenu(u64 kDown) {
 }
 
 int loginselection = 1;
+bool loginAttempted = false;
+char* roomresult = NULL;
 void drawLogIn(u64 kDown) {
     if (kDown & HidNpadButton_Down) {
-        loginselection--;
+        loginselection++;
     }
     if (kDown & HidNpadButton_Up) {
-        loginselection++;
+        loginselection--;
     }
     if (kDown & HidNpadButton_A) {
         if (loginselection == 1) {
-            Result rc = 0;
-            SwkbdConfig kbd;
-            char result[256];
-            
-            rc = swkbdCreate(&kbd, 0);
-            if (R_SUCCEEDED(rc)) {
-                swkbdConfigMakePresetDefault(&kbd);
-                swkbdConfigSetInitialText(&kbd, "");
-                swkbdConfigSetGuideText(&kbd, "Enter your username");
-                swkbdConfigSetStringLenMax(&kbd, 255);
-                rc = swkbdShow(&kbd, username, sizeof(username));
-                if (R_SUCCEEDED(rc)) {
-                    username = result;
-                }
-                swkbdClose(&kbd);
+            char* result = openKeyboard(255, "Enter your username");
+            if (result) {
+                username = result;
             }
         } else if (loginselection == 2) {
-            // TODO: Implement log in
+            char* result = openKeyboard(255, "Enter your password");
+            if (result) {
+                password = result;
+            }
+        } else if (loginselection == 3) {
+            if (strlen(username) > 0 && strlen(password) > 0) {
+                screen = 4;
+                if (!loginAttempted) {
+                    char* result = NULL;
+                    loginAttempted = true;
+                    network_request("http://104.236.25.60:6767/api/rooms", &result, "POST");
+                    roomresult = result;
+                }
+            } else {
+                errmsg = "Error: Invalid username or password";
+                errcode = "INV_AUTH";
+                screen = 3;
+            }
         }
     }
     if (kDown & HidNpadButton_B) {
         screen = 0;
     }
-    if (loginselection == 3) {
+    if (loginselection == 4) {
         loginselection = 1;
     } else if (loginselection == 0) {
-        loginselection = 2;
+        loginselection = 3;
     }
 
     drawRect(0, 0, 1280, 40, COL_HEADER);
@@ -168,12 +270,17 @@ void drawLogIn(u64 kDown) {
 
     drawRect(0, 82, 1280, 40, loginselection == 2 ? COL_HOVER : COL_PANEL);
     drawText(10, 28+82, "Password", COL_WHITE, 22);
+
+    drawRect(0, 124, 1280, 40, loginselection == 3 ? COL_HOVER : COL_PANEL);
+    drawText(10, 28+124, "Log In", COL_WHITE, 22);
 }
 
-void drawError(const char* message, const char* error_code) {
-    drawText(10, 48, "oops, something went wrong :/", COL_RED, 50);
-    drawText(10, 114, message, COL_WHITE, 35);
-    drawText(10, 710, error_code, COL_WHITE, 22);
+void drawRoomSelection(u64 kDown) {
+    drawRect(0, 0, 1280, 40, COL_HEADER);
+    drawText(10, 28, "Room Selection", COL_WHITE, 22);
+
+    drawRect(0, 28 + (1 * 40), 1280, 40, COL_PANEL);
+    drawText(10, 28 + (1 * 40), roomresult, COL_WHITE, 22);
 }
 
 int main(int argc, char* argv[]) {
@@ -191,6 +298,8 @@ int main(int argc, char* argv[]) {
     PadState pad;
     padInitializeDefault(&pad);
 
+    socketInitializeDefault();
+
     while (appletMainLoop()) {
         padUpdate(&pad);
         u64 kDown = padGetButtonsDown(&pad);
@@ -206,9 +315,13 @@ int main(int argc, char* argv[]) {
             drawMainMenu(kDown);
         } else if (screen == 1) {
             drawError("Screen Work in progress", "SCR_WIP");
-            // drawCreateAccount();
+            //drawCreateAccount(kDown);
         } else if (screen == 2) {
             drawLogIn(kDown);
+        } else if (screen == 3) {
+            drawError(errmsg, errcode);
+        } else if (screen == 4) {
+            drawRoomSelection(kDown);
         } else {
             drawError("Error: Invalid screen value", "SCR_VAL_INV");
         }
@@ -219,6 +332,7 @@ int main(int argc, char* argv[]) {
     FT_Done_Face(face);
     FT_Done_FreeType(ft);
     framebufferClose(&fb);
+    socketExit();
     romfsExit();
     return 0;
 }
