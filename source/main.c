@@ -4,6 +4,8 @@
 #include <string.h>
 #include <curl/curl.h>
 #include <ft2build.h>
+#include <SDL.h>
+#include <SDL_mixer.h>
 #include FT_FREETYPE_H
 
 #define RGBA(r,g,b,a) (((a) << 24) | ((b) << 16) | ((g) << 8) | (r))
@@ -363,6 +365,21 @@ int main(int argc, char* argv[]) {
 
     socketInitializeDefault();
 
+    SDL_Init(SDL_INIT_AUDIO);
+    Mix_Init(MIX_INIT_MP3);
+    Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, MIX_DEFAULT_CHANNELS, 4096);
+    Mix_Music *audio = Mix_LoadMUS("romfs:/music/loop.mp3");
+    if (!audio) {
+        errmsg = Mix_GetError();
+        errcode = "MIX_LOAD_FAIL";
+        screen = 3;
+    } else if (Mix_PlayMusic(audio, -1) < 0) {
+        errmsg = Mix_GetError();
+        errcode = "MIX_PLAY_FAIL";
+        screen = 3;
+    }
+    Mix_PlayMusic(audio, -1);
+    
     while (appletMainLoop()) {
         padUpdate(&pad);
         u64 kDown = padGetButtonsDown(&pad);
@@ -394,6 +411,8 @@ int main(int argc, char* argv[]) {
 
     FT_Done_Face(face);
     FT_Done_FreeType(ft);
+    Mix_FreeMusic(audio);
+    SDL_Quit();
     framebufferClose(&fb);
     socketExit();
     romfsExit();

@@ -54,6 +54,7 @@ CFLAGS  :=  -g -Wall -O2 -ffunction-sections \
 CFLAGS  +=  $(INCLUDE) -D__SWITCH__
 CFLAGS  +=  -I/opt/devkitpro/portlibs/switch/include/freetype2
 CFLAGS  +=  -I/opt/devkitpro/portlibs/switch/include/curl
+CFLAGS  +=  `$(PREFIX)pkg-config --cflags SDL2_mixer`
 
 CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions
 
@@ -61,8 +62,7 @@ ASFLAGS	:=	-g $(ARCH)
 LDFLAGS =   -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 LDFLAGS +=  -L/opt/devkitpro/portlibs/switch/lib -Wl,--whole-archive -lharfbuzz -Wl,--no-whole-archive
 
-LIBS := -lharfbuzz -lfreetype -lbz2 -lpng -lz -lm -lcurl -lmbedtls -lmbedcrypto -lmbedx509 -lnx
-
+LIBS := -lharfbuzz -lfreetype -lbz2 -lpng -lz -lm -lcurl -lmbedtls -lmbedcrypto -lmbedx509 -lnx `$(PREFIX)pkg-config --libs SDL2_mixer`
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing
 # include and lib
