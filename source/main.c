@@ -151,16 +151,15 @@ static size_t WriteMemoryCallback(void *contents, size_t size, size_t nmemb, voi
     return realsize;
 }
 
-void network_request(const char* url, char** result, const char* method) {
+void network_request(const char* url, char** result, const char* method, const char* body, const char* content_type) {
     CURL *curl;
     CURLcode res;
     struct MemoryStruct chunk;
+    struct curl_slist *headers = NULL;  // moved here
     
     chunk.memory = malloc(1);
     chunk.size = 0;
-
     curl_global_init(CURL_GLOBAL_DEFAULT);
-
     curl = curl_easy_init();
     if (curl) {
         curl_easy_setopt(curl, CURLOPT_URL, url);
@@ -168,9 +167,17 @@ void network_request(const char* url, char** result, const char* method) {
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
         curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, method);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
-
+        if (body != NULL) {
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)strlen(body));
+        }
+        if (content_type != NULL) {
+            char content_header[128];
+            snprintf(content_header, sizeof(content_header), "Content-Type: %s", content_type);
+            headers = curl_slist_append(headers, content_header);
+            curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+        }
         consoleUpdate(NULL);
-
         res = curl_easy_perform(curl);
         if (res != CURLE_OK) {
             drawError("curl_easy_perform() failed", curl_easy_strerror(res));
@@ -181,9 +188,9 @@ void network_request(const char* url, char** result, const char* method) {
             curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
             *result = chunk.memory;
         }
+        if (headers) curl_slist_free_all(headers);
         curl_easy_cleanup(curl);
     }
-
     curl_global_cleanup();
 }
 
@@ -265,6 +272,7 @@ void playSFX(Mix_Chunk* sfx, int fade_ms) {
 int screen = 0; // 0 = main menu, 1 = create account, 2 = log in, 3 = error screen, 4 = room selection
 const char* username = "";
 const char* password = "";
+char token[300];
 
 int mainmenuselection = 1;
 void drawMainMenu(u64 kDown) {
@@ -318,21 +326,64 @@ void drawLogIn(u64 kDown) {
                 password = result;
             }
         } else if (loginselection == 3) {
-            if (strlen(username) > 0 && strlen(password) > 0) {
-                screen = 4;
-                if (!loginAttempted) {
-                    char* result = NULL;
-                    loginAttempted = true;
-                    network_request("http://104.236.25.60:6767/api/rooms", &result, "POST");
-                    roomresult = result;
-                    Mix_Chunk* signedup_sfx = loadSFX("romfs:/sfx/signedup.mp3");
-                    playSFX(signedup_sfx, 150);
-                }
-            } else {
+            if (strlen(username) == 0 || strlen(password) == 0) {
                 errmsg = "Error: Invalid username or password";
                 errcode = "INV_AUTH";
                 screen = 3;
+                return;
             }
+
+            if (loginAttempted) return;
+            loginAttempted = true;
+            char sender[512];
+            snprintf(sender, sizeof(sender), "%s|%s|", username, password);
+            char* loginreqresult = NULL;
+            for (int attempt = 0; attempt < 3 && loginreqresult == NULL; attempt++) {
+                network_request("http://104.236.25.60:6767/api/login", &loginreqresult, "POST", sender, "text/plain");
+            }
+            if (loginreqresult == NULL) {
+                errmsg = "Error: The server never responded. Try again later.";
+                errcode = "SRV_UNREACH";
+                loginAttempted = false;
+                screen = 3;
+                return;
+            }
+
+            if (strstr(loginreqresult, "ERR_WRONG_PASS") != NULL) {
+                errmsg = "You entered the wrong password.\nTry again.";
+                errcode = "WRONG_PASS";
+                free(loginreqresult);
+                loginAttempted = false;
+                screen = 3;
+                return;
+            }
+
+            char loginbuf[1024];
+            strncpy(loginbuf, loginreqresult, sizeof(loginbuf) - 1);
+            loginbuf[sizeof(loginbuf) - 1] = '\0';
+            free(loginreqresult);
+
+            char* parsed_token = strtok(loginbuf, "|");
+            if (parsed_token == NULL) {
+                errmsg = "Error: Invalid response from server.";
+                errcode = "BAD_TOKEN";
+                loginAttempted = false;
+                screen = 3;
+                return;
+            }
+            strncpy(token, parsed_token, sizeof(token) - 1);
+            token[sizeof(token) - 1] = '\0';
+
+            // Fetch rooms
+            char* roomreqresult = NULL;
+            network_request("http://104.236.25.60:6767/api/rooms", &roomreqresult, "POST", NULL, NULL);
+            roomresult = roomreqresult;
+
+            // Play SFX
+            Mix_Chunk* signedup_sfx = loadSFX("romfs:/sfx/signedup.mp3");
+            playSFX(signedup_sfx, 150);
+
+            screen = 4;
         }
     }
     if (kDown & HidNpadButton_B) {
