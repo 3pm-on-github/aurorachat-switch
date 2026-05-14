@@ -327,7 +327,7 @@ void drawLogIn(u64 kDown) {
             }
         } else if (loginselection == 3) {
             if (strlen(username) == 0 || strlen(password) == 0) {
-                errmsg = "Error: Invalid username or password";
+                errmsg = "Invalid username or password";
                 errcode = "INV_AUTH";
                 screen = 3;
                 return;
@@ -342,7 +342,7 @@ void drawLogIn(u64 kDown) {
                 network_request("http://104.236.25.60:6767/api/login", &loginreqresult, "POST", sender, "text/plain");
             }
             if (loginreqresult == NULL) {
-                errmsg = "Error: The server never responded. Try again later.";
+                errmsg = "The server never responded.";
                 errcode = "SRV_UNREACH";
                 loginAttempted = false;
                 screen = 3;
@@ -350,7 +350,7 @@ void drawLogIn(u64 kDown) {
             }
 
             if (strstr(loginreqresult, "ERR_WRONG_PASS") != NULL) {
-                errmsg = "You entered the wrong password.\nTry again.";
+                errmsg = "You entered the wrong password. Try again.";
                 errcode = "WRONG_PASS";
                 free(loginreqresult);
                 loginAttempted = false;
@@ -365,7 +365,7 @@ void drawLogIn(u64 kDown) {
 
             char* parsed_token = strtok(loginbuf, "|");
             if (parsed_token == NULL) {
-                errmsg = "Error: Invalid response from server.";
+                errmsg = "Invalid response from server.";
                 errcode = "BAD_TOKEN";
                 loginAttempted = false;
                 screen = 3;
@@ -531,7 +531,7 @@ int main(int argc, char* argv[]) {
         } else if (screen == 4) {
             drawRoomSelection(kDown);
         } else {
-            drawError("Error: Invalid screen value", "SCR_VAL_INV");
+            drawError("Invalid screen value", "SCR_VAL_INV");
         }
 
         framebufferEnd(&fb);

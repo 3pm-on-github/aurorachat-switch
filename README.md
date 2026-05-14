@@ -35,3 +35,37 @@ make
 ```
 
 (At least that's what I think you gotta do)
+
+## Troubleshooting
+*When using AuroraChat on the switch, you may run into some problems, or error screens. These all have different meanings.*
+There are three possibilities on why you may get an error:
+1. The server is down or unreachable
+2. You have a bad internet connection
+3. An internal error occurred
+
+<div align="center">
+  <details>
+  <summary><strong>Errors</strong></summary>
+  
+  | Errors | Message | Meaning |
+  |--------|---------|---------|
+  | ROOM_FETCH_FAIL | Failed to load rooms | The server is down or unreachable. |
+  | SCR_WIP | Screen Work in progress | The screen is still being worked on. |
+  | SCR_VAL_INV | Invalid screen value | The screen value is set to an invalid screen ID. Usually means the screen is Work in progress. |
+  | REALLOC_NULL | Not enough memory | Happens when AuroraChat fails to allocate enough memory. |
+  | (unsure) | curl_easy_perform() failed | Happens when curl somehow fails to make a request. |
+  | INV_AUTH | Invalid username or password | Happens when the username or the password is invalid (none is set) |
+  | SRV_UNREACH | The server never responded. | Happens when the server is unreachable or down. |
+  | WRONG_PASS | You entered the wrong password. Try again. | You entered the wrong password. |
+  | BAD_TOKEN | Invalid response from server. | Happens when the server sent an invalid token or response. |
+  | MIX_LOAD_FAIL | (unsure) | Happens when SDL2 fails to load the music. |
+  | MIX_PLAY_FAIL | (unsure) | Happens when SDL2 fails to play the music.
+  </details>
+</div>
+
+## Current development status
+- [x] Main menu
+- [] Create Account screen
+- [x] Login screen
+- [x] Room selection screen
+- [] Chat screen
