@@ -325,6 +325,8 @@ void drawLogIn(u64 kDown) {
                     loginAttempted = true;
                     network_request("http://104.236.25.60:6767/api/rooms", &result, "POST");
                     roomresult = result;
+                    Mix_Chunk* signedup_sfx = loadSFX("romfs:/sfx/signedup.mp3");
+                    playSFX(signedup_sfx, 150);
                 }
             } else {
                 errmsg = "Error: Invalid username or password";
@@ -389,7 +391,6 @@ void parseRooms(const char* roomdata) {
     roomselection = 1;
 }
 
-bool playSignedUpSfx = true;
 void drawRoomSelection(u64 kDown) {
     if (roomresult && !rooms) {
         parseRooms(roomresult);
@@ -421,11 +422,6 @@ void drawRoomSelection(u64 kDown) {
         }
     } else {
         drawError("Failed to load rooms", "ROOM_FETCH_FAIL");
-    }
-    if (playSignedUpSfx) {
-        Mix_Chunk* signedup_sfx = loadSFX("romfs:/sfx/signedup.mp3");
-        playSFX(signedup_sfx, 150);
-        playSignedUpSfx = false;
     }
 }
 
