@@ -187,6 +187,81 @@ void network_request(const char* url, char** result, const char* method) {
     curl_global_cleanup();
 }
 
+Mix_Chunk* sfx_cache[16];
+int sfx_count = 0;
+
+Mix_Chunk* loadSFX(const char* path) {
+    Mix_Chunk* sfx = Mix_LoadWAV(path);
+    if (sfx && sfx_count < 16) {
+        sfx_cache[sfx_count++] = sfx;
+    }
+    return sfx;
+}
+
+void freeSFX() {
+    for (int i = 0; i < sfx_count; i++) {
+        Mix_FreeChunk(sfx_cache[i]);
+        sfx_cache[i] = NULL;
+    }
+    sfx_count = 0;
+}
+
+typedef struct {
+    Mix_Chunk* sfx;
+    int fade_ms;
+} SFXThreadData;
+
+int sfxThreadFunc(void* data) {
+    SFXThreadData* d = (SFXThreadData*)data;
+    Mix_Chunk* sfx   = d->sfx;
+    int fade_ms      = d->fade_ms;
+    free(d);
+
+    int full_vol  = MIX_MAX_VOLUME;
+    int half_vol  = MIX_MAX_VOLUME / 2;
+    int step_time = 10;
+    int steps     = fade_ms / step_time;
+
+    for (int i = 0; i <= steps; i++) {
+        int vol = full_vol - (int)((float)i / steps * (full_vol - half_vol));
+        Mix_VolumeMusic(vol);
+        SDL_Delay(step_time);
+    }
+
+    Mix_VolumeChunk(sfx, MIX_MAX_VOLUME);
+    int channel = Mix_PlayChannel(-1, sfx, 0);
+    if (channel != -1) {
+        while (Mix_Playing(channel)) {
+            SDL_Delay(10);
+        }
+    }
+
+    for (int i = 0; i <= steps; i++) {
+        int vol = half_vol + (int)((float)i / steps * (full_vol - half_vol));
+        Mix_VolumeMusic(vol);
+        SDL_Delay(step_time);
+    }
+
+    Mix_VolumeMusic(full_vol);
+    return 0;
+}
+
+void playSFX(Mix_Chunk* sfx, int fade_ms) {
+    if (!sfx) return;
+
+    SFXThreadData* d = malloc(sizeof(SFXThreadData));
+    if (!d) return;
+    d->sfx     = sfx;
+    d->fade_ms = fade_ms;
+
+    SDL_Thread* thread = SDL_CreateThread(sfxThreadFunc, "sfx_fade", d);
+    if (thread) {
+        SDL_DetachThread(thread);
+    } else {
+        free(d);
+    }
+}
+
 int screen = 0; // 0 = main menu, 1 = create account, 2 = log in, 3 = error screen, 4 = room selection
 const char* username = "";
 const char* password = "";
@@ -314,6 +389,7 @@ void parseRooms(const char* roomdata) {
     roomselection = 1;
 }
 
+bool playSignedUpSfx = true;
 void drawRoomSelection(u64 kDown) {
     if (roomresult && !rooms) {
         parseRooms(roomresult);
@@ -345,6 +421,11 @@ void drawRoomSelection(u64 kDown) {
         }
     } else {
         drawError("Failed to load rooms", "ROOM_FETCH_FAIL");
+    }
+    if (playSignedUpSfx) {
+        Mix_Chunk* signedup_sfx = loadSFX("romfs:/sfx/signedup.mp3");
+        playSFX(signedup_sfx, 150);
+        playSignedUpSfx = false;
     }
 }
 
